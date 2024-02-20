@@ -1,0 +1,106 @@
+
+#pragma kernel RampGen1D
+#pragma kernel RampGen2D
+#pragma multi_compile _ _SRGB
+//#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+
+RWTexture2D<float4> Result;
+
+float4 _ColorAndPosArr[10];
+float  _ColorAndPosArrLen;
+float _Resolution;
+[numthreads(8,8,1)]
+void RampGen1D (uint3 id : SV_DispatchThreadID)
+{
+    
+    for (int i = 1;i < _ColorAndPosArrLen;++i)
+    {
+        if(id.x<_ColorAndPosArr[i].w*_Resolution)
+        {
+             half3 colLerp=lerp(_ColorAndPosArr[i-1].xyz,_ColorAndPosArr[i].xyz,(id.x-_ColorAndPosArr[i-1].w*_Resolution)/((_ColorAndPosArr[i].w-_ColorAndPosArr[i-1].w)*_Resolution));
+             Result[id.xy] = float4(colLerp, 1.0);
+             break;
+        }
+        
+       
+    }
+    if(_ColorAndPosArr[0].w>0)
+    {
+        if(id.x<_ColorAndPosArr[0].w*_Resolution)
+        {
+            Result[id.xy] = float4(_ColorAndPosArr[0].xyz, 1.0);
+        }
+    }
+     if(_ColorAndPosArr[_ColorAndPosArrLen-1].w<1)
+    {
+        if(id.x>_ColorAndPosArr[_ColorAndPosArrLen-1].w*_Resolution)
+        {
+            Result[id.xy] = float4(_ColorAndPosArr[_ColorAndPosArrLen-1].xyz, 1.0);
+        }
+    }
+#ifndef _SRGB
+    Result[id.xy]=float4(pow(Result[id.xy].xyz,2.2),1.0);
+#else
+    Result[id.xy] = float4(Result[id.xy].xyz, 1.0);
+#endif
+     
+}
+
+Texture2D<float4> _Curve1;
+Texture2D<float4> _Curve2;
+Texture2D<float4> _CurveNS;
+SamplerState linearClampSampler;
+half4 _NegativeShape;
+half _Moede;
+[numthreads(8,8,1)]
+void RampGen2D (uint3 id : SV_DispatchThreadID)
+{
+    half4  curve1=_Curve1.SampleLevel( linearClampSampler, float2(id.x/_Resolution,0),0).rgba;   
+  
+    half4  curve2=_Curve2.SampleLevel( linearClampSampler, float2(id.y/_Resolution,0),0).rgba;  
+    half4  curveNS=_CurveNS.SampleLevel( linearClampSampler, float2(id.y/_Resolution,0),0).rgba;  
+    half4  finVal=0;
+    if(_Moede==0)//R 
+    {
+       
+
+        half   curveVal=smoothstep((curveNS.r-curve2.r*0.5),(curveNS.r+curve2.r*0.5),curve1.r);
+          finVal=curveVal.rrrr;
+    }
+    else if(_Moede==1) //G
+    {
+        half   curveVal=smoothstep((curveNS.g-curve2.g*0.5),(curveNS.g+curve2.g*0.5),curve1.g);
+          finVal=curveVal.rrrr;
+
+    }
+    else if(_Moede==2) //B
+    {
+        half   curveVal=smoothstep((curveNS.b-curve2.b*0.5),(curveNS.b+curve2.b*0.5),curve1.b);
+          finVal=curveVal.rrrr;
+
+    }
+    else if(_Moede==3) //A
+    {
+        half   curveVal=smoothstep((curveNS.a-curve2.a*0.5),(curveNS.a+curve2.a*0.5),curve1.a);
+          finVal=curveVal.rrrr;
+
+    }
+    else   //Show RGBA Result 
+    {
+        half   curveValR=smoothstep((curveNS.r-curve2.r*0.5),(curveNS.r+curve2.r*0.5),curve1.r);
+        half   curveValG=smoothstep((curveNS.g-curve2.g*0.5),(curveNS.g+curve2.g*0.5),curve1.g);
+        half   curveValB=smoothstep((curveNS.b-curve2.b*0.5),(curveNS.b+curve2.b*0.5),curve1.b);
+        half   curveValA=smoothstep((curveNS.a-curve2.a*0.5),(curveNS.a+curve2.a*0.5),curve1.a);
+          finVal=half4(curveValR,curveValG,curveValB,curveValA);
+    }
+
+   
+    
+    //Result[id.xy]=pow(finVal,2.2);
+#ifndef _SRGB
+    Result[id.xy] = pow(finVal, 2.2);
+#else
+    Result[id.xy] = finVal;
+#endif
+   
+}
